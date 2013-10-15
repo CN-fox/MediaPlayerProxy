@@ -1,5 +1,3 @@
-package com.mandala.util;
-
 import android.media.MediaPlayer;
 
 import java.io.IOException;
