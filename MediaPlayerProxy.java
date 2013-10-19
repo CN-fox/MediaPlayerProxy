@@ -76,7 +76,7 @@ public class MediaPlayerProxy {
         boolean err = false;
         try {
             player.setDataSource(path);
-        } catch (IOException e) {
+        } catch (Exception e) {
             err = true;
             e.printStackTrace();
         }finally {
