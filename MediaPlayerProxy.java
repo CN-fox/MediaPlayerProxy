@@ -1,17 +1,26 @@
+
 import android.media.MediaPlayer;
 
-import java.io.IOException;
+import com.mandala.Exception.MediaPlayerProxyException;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Created by CN_fox on 13-10-14.
+ * 播放语音代理类
+ * 理论上这个类可以做下载，先获得文件后，再播放本地文件，减少流量使用
+ * 暂时不做了
+ * Created by W_Q on 13-10-14.
  */
 public class MediaPlayerProxy {
     private MediaPlayer player;
     private static MediaPlayerProxy proxy = new MediaPlayerProxy();
-    private List<PlayState> list;
-    private PlayState mState;
+    private List<PlayState> list; //单纯的播放动画集合
+    private PlayState mState; //正在播放的
+    private String mPlayPath;
+    private String TAG = getClass().getSimpleName();
+    private PlayLengthListener playLengthListener; //播放时长监听器
+    private boolean isNew; //用于注销时长监听
 
     private MediaPlayerProxy(){
         player = new MediaPlayer();
@@ -20,8 +29,29 @@ public class MediaPlayerProxy {
             @Override
             public void onPrepared(MediaPlayer mediaPlayer) {
                 player.start(); //准备结束后，开始播放
-                if (mState!=null)
+                if (mState!=null){
                     mState.play();
+                    MLog.e(TAG,"mState.play()");
+                }
+                if (playLengthListener!=null){
+                    new Thread(){
+                        @Override
+                        public void run() {
+                            while (mState.getState() == PlayState.PLAY){
+                                try {
+                                    sleep(1000);
+                                    MLog.e(TAG,"MediaPlayerProxy.this.playLengthListener != null"+(MediaPlayerProxy.this.playLengthListener != null));
+                                    if (MediaPlayerProxy.this.playLengthListener != null) {
+                                        MediaPlayerProxy.this.playLengthListener.currentLength(player.getCurrentPosition());
+                                        MLog.e(TAG,"player.getCurrentPosition()"+(player.getCurrentPosition()));
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                    }.start();
+                }
             }
         });
 
@@ -29,67 +59,141 @@ public class MediaPlayerProxy {
             @Override
             public void onCompletion(MediaPlayer mediaPlayer) {
                 player.stop();//播放结束
-                if (mState!=null)
+                player.reset();
+                mPlayPath = null;
+                if (mState!=null){
                     mState.stop();
+                    mState.setState(PlayState.NORMAL);
+                }
             }
         });
 
     }
 
+    /**
+     * 获得播放代理
+     * @return
+     */
     public static MediaPlayerProxy getProxy(){
         return proxy;
     }
+
+    /**
+     * 仅仅在布局复用的时候调用
+     * @param mState
+     * @param listener
+     */
+    public void setPlayState(PlayState mState,PlayLengthListener listener){
+        this.mState = mState;
+        this.playLengthListener = listener;
+    }
+
+    /**
+     * 带有时长监听的播放
+     * @param state
+     * @param listener
+     * @param path
+     * @return
+     */
+    public boolean play(PlayState state,PlayLengthListener listener,String path){
+        this.playLengthListener = listener;
+        isNew = true;
+        return play(state, path);
+    }
+
 
     /**
      * 播放(停止)语音
      * @param state 播放对象接口
      * @param path 播放路径
      */
-    public void play(PlayState state,String path){
+    public boolean play(PlayState state,String path){
         this.mState = state;
-        PlayState mState = null;
+        mPlayPath = path;
+        PlayState current = null;
+        if (isNew){
+            isNew = false;
+        }else {
+            playLengthListener = null;
+        }
         for (PlayState s:list){
             if (s.getState() == PlayState.PLAY){
-                mState = s;
+                current = s;
                 break;
             }
         }
 
-        if (mState!=null){
+        if (current!=null){
             stop();
-            mState.stop();
-            mState.setState(PlayState.NORMAL);//停止后，再
-            if (mState.equals(state))//再次点击还是自己，说明是想停止播放
-                return;
+            current.stop();
+            current.setState(PlayState.NORMAL);//停止后，再
+            if (current.equals(state))//再次点击还是自己，说明是想停止播放
+                return true;
         }
-        play(path); //实际播放
-        //在遍历完成后，再设置状态
-        state.setState(PlayState.PLAY);
 
+        boolean err = false;
+        try {
+            play(path); //实际播放
+        } catch (MediaPlayerProxyException e) {
+            e.printStackTrace();
+            err = true;
+        }finally {
+            if (err){
+                //播放失败，调用停止播放的接口
+                state.setState(PlayState.NORMAL);
+                state.stop();
+                return false;
+            }else{
+                //设置播放状态
+//                list.add(state);
+                state.setState(PlayState.PLAY);
+                return true;
+            }
+        }
     }
 
     /**
      * 实际播放的方法
      * @param path
      */
-    private void play(String path){
+    private void play(String path) throws MediaPlayerProxyException {
         boolean err = false;
         try {
+            if (path == null||path.equals("")){
+                throw new MediaPlayerProxyException("路径有问题");
+            }
+            MLog.i(TAG,"想要播放的音频路径"+path);
             player.setDataSource(path);
         } catch (Exception e) {
             err = true;
-            e.printStackTrace();
+            //e.printStackTrace();
         }finally {
             if (err){
                 player.reset();
                 try {
                     player.setDataSource(path);
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } catch (Exception e) {
+                    //e.printStackTrace();
+                    throw new MediaPlayerProxyException("路径有问题");
                 }
             }
         }
         player.prepareAsync(); //异步的准备
+    }
+
+    /**
+     * 这个路径是否正在播放
+     * @param path
+     * @return
+     */
+    public boolean isPlay(String path){
+        if (mState == null || mPlayPath == null || !mPlayPath.equals(path+"")){
+            return false;
+        }
+        if (mPlayPath.equals(path+"")){
+            return mState.getState() == PlayState.PLAY;
+        }
+        return false;
     }
 
     /**
@@ -112,6 +216,7 @@ public class MediaPlayerProxy {
         }
 
         if (mState!=null){
+//            强制停止实现
             stop();
             mState.stop();
             mState.setState(PlayState.NORMAL);
@@ -119,11 +224,12 @@ public class MediaPlayerProxy {
     }
 
     /**
-     * 添加后才可以播放
+     * 添加后才可以播放,需要避免重复添加
      * @param state
      */
     public void add(PlayState state){
-        list.add(state);
+        if (!list.contains(state))
+            list.add(state);
     }
 
     public void clear(){
@@ -161,5 +267,17 @@ public class MediaPlayerProxy {
          * @param state
          */
         void setState(int state);
+    }
+
+    public interface PlayLengthListener{
+        /**
+         * 当前播放到的时长
+         * @param time
+         */
+        void currentLength(int time);
+    }
+    
+    public List<PlayState> getList(){
+    	return this.list;
     }
 }
