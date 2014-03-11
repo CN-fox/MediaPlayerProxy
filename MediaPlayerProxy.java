@@ -1,4 +1,3 @@
-
 import android.media.MediaPlayer;
 
 import com.mandala.Exception.MediaPlayerProxyException;
@@ -6,7 +5,7 @@ import com.mandala.Exception.MediaPlayerProxyException;
 import java.util.ArrayList;
 import java.util.List;
 
-**
+/**
  * 播放语音代理类
  * 理论上这个类可以做下载，先获得文件后，再播放本地文件，减少流量使用
  * 不做了
