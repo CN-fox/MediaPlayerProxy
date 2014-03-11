@@ -6,10 +6,10 @@ import com.mandala.Exception.MediaPlayerProxyException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
+**
  * 播放语音代理类
  * 理论上这个类可以做下载，先获得文件后，再播放本地文件，减少流量使用
- * 暂时不做了
+ * 不做了
  * Created by W_Q on 13-10-14.
  */
 public class MediaPlayerProxy {
@@ -21,6 +21,18 @@ public class MediaPlayerProxy {
     private String TAG = getClass().getSimpleName();
     private PlayLengthListener playLengthListener; //播放时长监听器
     private boolean isNew; //用于注销时长监听
+    private Handler handler = new Handler(){
+        @Override
+        public void handleMessage(Message msg) {
+            if (MediaPlayerProxy.this.playLengthListener != null) {
+                MediaPlayerProxy.this.playLengthListener.currentLength(player.getCurrentPosition());
+                sendEmptyMessageDelayed(0,1000);
+            }else{
+                return;
+            }
+
+        }
+    };
 
     private MediaPlayerProxy(){
         player = new MediaPlayer();
@@ -34,23 +46,7 @@ public class MediaPlayerProxy {
                     MLog.e(TAG,"mState.play()");
                 }
                 if (playLengthListener!=null){
-                    new Thread(){
-                        @Override
-                        public void run() {
-                            while (mState.getState() == PlayState.PLAY){
-                                try {
-                                    sleep(1000);
-                                    MLog.e(TAG,"MediaPlayerProxy.this.playLengthListener != null"+(MediaPlayerProxy.this.playLengthListener != null));
-                                    if (MediaPlayerProxy.this.playLengthListener != null) {
-                                        MediaPlayerProxy.this.playLengthListener.currentLength(player.getCurrentPosition());
-                                        MLog.e(TAG,"player.getCurrentPosition()"+(player.getCurrentPosition()));
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        }
-                    }.start();
+                    handler.sendEmptyMessageDelayed(0,1000);
                 }
             }
         });
@@ -61,6 +57,7 @@ public class MediaPlayerProxy {
                 player.stop();//播放结束
                 player.reset();
                 mPlayPath = null;
+                playLengthListener = null;
                 if (mState!=null){
                     mState.stop();
                     mState.setState(PlayState.NORMAL);
@@ -191,7 +188,8 @@ public class MediaPlayerProxy {
             return false;
         }
         if (mPlayPath.equals(path+"")){
-            return mState.getState() == PlayState.PLAY;
+//            return mState.getState() == PlayState.PLAY;
+            return true;
         }
         return false;
     }
@@ -219,6 +217,8 @@ public class MediaPlayerProxy {
 //            强制停止实现
             stop();
             mState.stop();
+            mPlayPath = null;
+            playLengthListener = null;
             mState.setState(PlayState.NORMAL);
         }
     }
